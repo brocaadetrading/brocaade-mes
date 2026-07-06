@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brocaade MES - Manufacturing Execution System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .sla-breach { animation: blink 1s infinite; }
+        @keyframes blink { 0%, 50%, 100% { opacity: 1; } 25%, 75% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script>
+        // Configuration
+        const API_URL = 'https://brocaade-mes.vercel.app'; // Change this to your backend URL
+        const TOKEN_KEY = 'auth_token';
+        const USER_KEY = 'user';
+
+        // Global state
+        let currentUser = null;
+        let currentPage = 'login';
+
+        // ============================================================================
+        // AUTHENTICATION
+        // ============================================================================
+
+        async function login(email, password) {
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    localStorage.setItem(TOKEN_KEY, data.token);
+                    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+                    currentUser = data.user;
+                    currentPage = 'dashboard';
+                    render();
+                } else {
+                    alert('Login failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            currentUser = null;
+            currentPage = 'login';
+            render();
+        }
+
+        // ============================================================================
+        // API CALLS
+        // ============================================================================
+
+        async function apiCall(endpoint, options = {}) {
+            const token = localStorage.getItem(TOKEN_KEY);
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_URL}${endpoint}`, {
+                ...options,
+                headers
+            });
+
+            return response.json();
+        }
+
+        async function getProjects() {
+            return await apiCall('/api/projects');
+        }
+
+        async function getJobSheets() {
+            return await apiCall('/api/job-sheets');
+        }
+
+        async function getDashboardSummary() {
+            return await apiCall('/api/owner/dashboard-summary');
+        }
+
+        // ============================================================================
+        // RENDER FUNCTIONS
+        // ============================================================================
+
+        function renderLoginPage() {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center px-4">
+                    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
+                        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Brocaade MES</h1>
+                        <p class="text-center text-gray-600 mb-6">Interior & Manufacturing Workflow</p>
+
+                        <div class="space-y-4">
+                            <input type="email" id="email" placeholder="Email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" value="owner@brocaade.com">
+                            <input type="password" id="password" placeholder="Password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" value="SecurePass123!">
+                            <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700">Login</button>
+                        </div>
+
+                        <div class="mt-6 bg-blue-50 p-4 rounded text-sm text-gray-700">
+                            <p class="font-semibold mb-2">Demo Credentials:</p>
+                            <p>Owner: owner@brocaade.com / SecurePass123!</p>
+                            <p>Design: design@brocaade.com / DesignPass123!</p>
+                            <p>Manager: manager@brocaade.com / ManagerPass123!</p>
+                            <p>Contractor: contractor@brocaade.com / ContractorPass123!</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderDashboard() {
+            return `
+                <div class="min-h-screen bg-gray-100">
+                    <!-- Header -->
+                    <div class="bg-white shadow">
+                        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                            <h1 class="text-2xl font-bold text-gray-800">Brocaade MES</h1>
+                            <div class="flex items-center space-x-4">
+                                <span class="text-gray-600">${currentUser.email}</span>
+                                <button onclick="logout()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Logout</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Content -->
+                    <div class="max-w-7xl mx-auto px-4 py-8">
+                        <h2 class="text-3xl font-bold text-gray-800 mb-6">${currentUser.role.replace('_', ' ').toUpperCase()} Dashboard</h2>
+
+                        <!-- Navigation Tabs -->
+                        <div class="flex space-x-4 mb-6">
+                            <button onclick="switchTab('overview')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Overview</button>
+                            <button onclick="switchTab('projects')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Projects</button>
+                            <button onclick="switchTab('jobs')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Jobs</button>
+                        </div>
+
+                        <!-- Overview Tab -->
+                        <div id="tab-overview" class="space-y-6">
+                            <div id="summary-loading" class="text-center text-gray-600">Loading dashboard data...</div>
+                            <div id="summary-content" class="hidden"></div>
+                        </div>
+
+                        <!-- Projects Tab -->
+                        <div id="tab-projects" class="hidden space-y-6">
+                            <div id="projects-loading" class="text-center text-gray-600">Loading projects...</div>
+                            <div id="projects-content" class="hidden"></div>
+                        </div>
+
+                        <!-- Jobs Tab -->
+                        <div id="tab-jobs" class="hidden space-y-6">
+                            <div id="jobs-loading" class="text-center text-gray-600">Loading jobs...</div>
+                            <div id="jobs-content" class="hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================================================
+        // TAB SWITCHING
+        // ============================================================================
+
+        async function switchTab(tab) {
+            // Hide all tabs
+            document.getElementById('tab-overview').classList.add('hidden');
+            document.getElementById('tab-projects').classList.add('hidden');
+            document.getElementById('tab-jobs').classList.add('hidden');
+
+            // Show selected tab
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+
+            // Load data
+            if (tab === 'overview') {
+                await loadDashboardSummary();
+            } else if (tab === 'projects') {
+                await loadProjects();
+            } else if (tab === 'jobs') {
+                await loadJobSheets();
+            }
+        }
+
+        async function loadDashboardSummary() {
+            try {
+                const data = await getDashboardSummary();
+                const html = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-600">
+                            <p class="text-gray-600 text-sm">Active Jobs</p>
+                            <p class="text-3xl font-bold text-blue-600">${data.active_jobs || 0}</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-600">
+                            <p class="text-gray-600 text-sm">Pipeline Value</p>
+                            <p class="text-3xl font-bold text-green-600">₹${(data.pipeline_value || 0).toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-orange-600">
+                            <p class="text-gray-600 text-sm">Contractor Liabilities</p>
+                            <p class="text-3xl font-bold text-orange-600">₹${(data.total_outstanding_liabilities || 0).toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md border-l-4 border-purple-600">
+                            <p class="text-gray-600 text-sm">Pending COD</p>
+                            <p class="text-3xl font-bold text-purple-600">₹${(data.pending_cod_value || 0).toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('summary-loading').classList.add('hidden');
+                document.getElementById('summary-content').innerHTML = html;
+                document.getElementById('summary-content').classList.remove('hidden');
+            } catch (error) {
+                document.getElementById('summary-loading').innerHTML = 'Error loading data: ' + error.message;
+            }
+        }
+
+        async function loadProjects() {
+            try {
+                const data = await getProjects();
+                let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(project => {
+                        html += `
+                            <div class="bg-white p-6 rounded-lg shadow-md">
+                                <h3 class="text-lg font-bold text-gray-800">${project.project_name}</h3>
+                                <p class="text-gray-600 text-sm mt-1">Type: ${project.project_type}</p>
+                                <p class="text-gray-600 text-sm">Client: ${project.client_name}</p>
+                                <p class="text-gray-600 text-sm">Budget: ₹${(project.budget_amount || 0).toLocaleString()}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="col-span-2 text-gray-600">No projects found</p>';
+                }
+                
+                html += '</div>';
+                document.getElementById('projects-loading').classList.add('hidden');
+                document.getElementById('projects-content').innerHTML = html;
+                document.getElementById('projects-content').classList.remove('hidden');
+            } catch (error) {
+                document.getElementById('projects-loading').innerHTML = 'Error loading projects: ' + error.message;
+            }
+        }
+
+        async function loadJobSheets() {
+            try {
+                const data = await getJobSheets();
+                let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(job => {
+                        html += `
+                            <div class="bg-white p-6 rounded-lg shadow-md">
+                                <p class="text-sm text-gray-500">${job.job_number}</p>
+                                <h3 class="text-lg font-bold text-gray-800">${job.job_type}</h3>
+                                <p class="text-gray-600 text-sm mt-1">Status: ${job.status}</p>
+                                <span class="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                                    job.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    job.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }">${job.status}</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="col-span-2 text-gray-600">No jobs found</p>';
+                }
+                
+                html += '</div>';
+                document.getElementById('jobs-loading').classList.add('hidden');
+                document.getElementById('jobs-content').innerHTML = html;
+                document.getElementById('jobs-content').classList.remove('hidden');
+            } catch (error) {
+                document.getElementById('jobs-loading').innerHTML = 'Error loading jobs: ' + error.message;
+            }
+        }
+
+        // ============================================================================
+        // EVENT HANDLERS
+        // ============================================================================
+
+        function handleLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                alert('Please enter email and password');
+                return;
+            }
+            
+            login(email, password);
+        }
+
+        // ============================================================================
+        // MAIN RENDER FUNCTION
+        // ============================================================================
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!currentUser) {
+                app.innerHTML = renderLoginPage();
+            } else {
+                app.innerHTML = renderDashboard();
+            }
+        }
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem(TOKEN_KEY);
+            const user = localStorage.getItem(USER_KEY);
+            
+            if (token && user) {
+                currentUser = JSON.parse(user);
+            }
+            
+            render();
+        });
+    </script>
+</body>
+</html>
